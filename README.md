@@ -1,20 +1,51 @@
-<<<<<<< HEAD
-# Finance_Wise_AI
-=======
-# React + Vite
+# Finance Wise AI 🧠💰
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Finance Wise AI is a financial decision assistant that helps beginners choose between two options using real-world financial logic instead of just numbers.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🎯 What It Does
 
-## React Compiler
+- Compares Option A vs Option B  
+- Explains both in simple, real-life terms  
+- Evaluates cash flow, risk, and liquidity  
+- Simulates real-world scenarios (like income drop)  
+- Gives a clear, decisive recommendation  
+- Avoids generic “it depends” answers  
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 🧠 How It Works
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
->>>>>>> b498b4e (First commit - Built AI reasoning engine and UI)
+The system uses a structured reasoning engine:
+
+1. Understands both options in real-life behavior  
+2. Identifies financial pressure (EMI, risk, lock-in)  
+3. Checks liquidity and emergency safety  
+4. Compares guaranteed cost vs uncertain returns  
+5. Runs stress test (income drop scenario)  
+6. Selects the safest and most practical option  
+
+---
+
+## ⚙️ Tech Stack
+
+- JavaScript / Node.js  
+- Grok AI (reasoning engine)  
+- Custom prompt-based decision system  
+
+---
+
+## 🔐 Security
+
+- API keys stored in `.env`  
+- `.env` excluded using `.gitignore`  
+- No secrets committed to repository  
+
+---
+
+## 🚀 Run Locally
+
+```bash
+npm install
+npm run dev
