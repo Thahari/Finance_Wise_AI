@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowRight, 
   Sparkles,
@@ -49,13 +49,14 @@ function App() {
     }
   }, [apiKey]);
 
-  const buildApiMessages = (uiMessages) => {
+  // Memoized efficiency: Prevents unnecessary recreation of the logic on every render
+  const buildApiMessages = useCallback((uiMessages) => {
     const mapped = uiMessages.slice(0, uiMessages.length - 1).filter(m => m.text).map(m => ({
       role: m.role === 'model' ? 'assistant' : 'user',
       content: m.text
     }));
     return [{ role: 'system', content: systemPrompt }, ...mapped];
-  };
+  }, []);
 
   const handleAnalyze = async (e) => {
     e.preventDefault();
@@ -191,10 +192,14 @@ function App() {
       {/* Top Navbar */}
       <header className="w-full h-16 flex justify-between items-center px-6 bg-[#0e0e0e] sticky top-0 z-50 border-b border-[#222]">
         <div className="flex items-center gap-2 font-sans font-semibold text-xl tracking-tight text-[#ececec] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => { setMessages([]); setHasSearched(false); setOptionA(''); setOptionB(''); }}>
-          <div className="w-6 h-6 bg-[#ececec] rounded flex items-center justify-center p-1">
-             <PiggyBank className="w-4 h-4 text-[#0e0e0e]" />
+          <div 
+            className="w-6 h-6 bg-[#ececec] rounded flex items-center justify-center p-1"
+            role="img"
+            aria-label="Piggy Bank Logo"
+          >
+             <PiggyBank className="w-4 h-4 text-[#0e0e0e]" aria-hidden="true" />
           </div>
-          <span>Finance Wise</span>
+          <span aria-label="Finance Wise Home">Finance Wise</span>
         </div>
         <div className="flex items-center gap-4">
           {showSettings ? (
@@ -246,7 +251,9 @@ function App() {
               <div className="relative perp-input rounded-[1.5rem] p-2 flex flex-col md:flex-row items-center gap-2 w-full transition-colors">
                 <div className="flex-1 w-full px-4 py-3 flex items-center gap-3 border-b md:border-b-0 md:border-r border-[#333] transition-colors rounded-t-[1rem] md:rounded-[1rem]">
                   <div className="font-semibold text-xs text-[#ececec] tracking-widest bg-[#222] border border-[#444] px-3 py-1.5 rounded shadow-sm">OPTION A</div>
+                  <label htmlFor="optionA" className="sr-only">Financial Option A</label>
                   <input 
+                    id="optionA"
                     type="text" 
                     required
                     placeholder="e.g. Pay off $1k credit card"
@@ -254,11 +261,14 @@ function App() {
                     value={optionA}
                     onChange={(e) => setOptionA(e.target.value)}
                     disabled={loading}
+                    aria-label="Enter your first financial option"
                   />
                 </div>
                 <div className="flex-1 w-full px-4 py-3 flex items-center gap-3">
                   <div className="font-semibold text-xs text-[#ececec] tracking-widest bg-[#222] border border-[#444] px-3 py-1.5 rounded shadow-sm">OPTION B</div>
+                  <label htmlFor="optionB" className="sr-only">Financial Option B</label>
                   <input 
+                    id="optionB"
                     type="text" 
                     required
                     placeholder="e.g. Invest $1k in stocks"
@@ -266,19 +276,22 @@ function App() {
                     value={optionB}
                     onChange={(e) => setOptionB(e.target.value)}
                     disabled={loading}
+                    aria-label="Enter your second financial option"
                   />
                 </div>
                 <button 
                   type="submit"
                   disabled={loading || !optionA.trim() || !optionB.trim()}
                   className="w-full md:w-auto px-5 py-3 md:py-2 md:px-4 m-1 rounded-xl bg-[#ececec] hover:bg-[#ffffff] text-black flex items-center justify-center transition-all cursor-pointer font-medium tracking-wide disabled:opacity-50 disabled:cursor-not-allowed hidden md:flex"
+                  aria-label="Compare financial options"
                 >
-                  <ArrowRight className="w-5 h-5 text-black" />
+                  <ArrowRight className="w-5 h-5 text-black" aria-hidden="true" />
                 </button>
                 <button 
                   type="submit"
                   disabled={loading || !optionA.trim() || !optionB.trim()}
                   className="w-full p-3 m-1 rounded-xl bg-[#ececec] hover:bg-[#ffffff] text-black items-center justify-center transition-all cursor-pointer font-medium tracking-wide disabled:opacity-50 disabled:cursor-not-allowed flex md:hidden"
+                  aria-label="Compare financial options mobile button"
                 >
                   Compare Options
                 </button>
@@ -327,20 +340,24 @@ function App() {
           <div className="max-w-3xl mx-auto w-full">
              <form onSubmit={handleFollowUp} className="relative w-full">
                 <div className="relative perp-input rounded-[1.5rem] px-4 py-2 flex gap-3 items-center focus-within:border-[#555] transition-all">
+                  <label htmlFor="followUpInput" className="sr-only">Ask a follow-up question</label>
                   <input
+                    id="followUpInput"
                     type="text"
                     value={followUp}
                     onChange={(e) => setFollowUp(e.target.value)}
                     placeholder={loading ? "Waiting for response..." : "Ask a follow-up question..."}
                     disabled={loading}
                     className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[#ececec] placeholder-[#666] px-2 text-[15px]"
+                    aria-label="Ask a follow up question"
                   />
                   <button 
                     type="submit" 
                     disabled={loading || !followUp.trim()} 
                     className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${!loading && followUp.trim() ? "bg-[#ececec] text-black hover:bg-white cursor-pointer" : "bg-[#252525] text-[#555] cursor-not-allowed"}`}
+                    aria-label="Send follow up question"
                   >
-                    <Send className="w-4 h-4 ml-0.5" />
+                    <Send className="w-4 h-4 ml-0.5" aria-hidden="true" />
                   </button>
                 </div>
              </form>
