@@ -31,8 +31,9 @@ The system uses a structured reasoning engine:
 ## ⚙️ Tech Stack
 
 - JavaScript / Node.js  
-- Grok AI (reasoning engine)  
-- Custom prompt-based decision system  
+- Grok AI — reasoning engine  
+- Google AI Studio — prompt design & testing  
+- Google Antigravity — UI/UX vibe coding  
 
 ---
 
