@@ -1,14 +1,19 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { 
   ArrowRight, 
   Sparkles,
   Send,
-  PiggyBank
+  PiggyBank,
+  History,
+  Trash2,
+  X,
+  MessageSquare
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import MarkdownOutput from './components/MarkdownOutput';
+import HistorySidebar from './components/HistorySidebar';
 import { systemPrompt } from './prompt';
-import OpenAI from 'openai';
-import MatrixRain from './MatrixRain';
+
+const MatrixRain = React.lazy(() => import('./MatrixRain'));
 
 function App() {
   const [optionA, setOptionA] = useState('');
@@ -19,11 +24,27 @@ function App() {
   const [followUp, setFollowUp] = useState('');
   const [loadingText, setLoadingText] = useState("Mentor is thinking (API-Free)...");
   
+  const [sessions, setSessions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('finance_wise_history');
+      if (saved && typeof saved === 'string') {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+      return [];
+    } catch (e) {
+      console.warn("Storage warning: History reset.", e);
+      return []; 
+    }
+  });
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+
   const endOfMessagesRef = useRef(null);
 
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('groq_key') || import.meta.env.VITE_GROQ_API_KEY || '');
   const [showSettings, setShowSettings] = useState(false);
-  const MODEL_NAME = "llama-3.1-8b-instant"; // Groq Llama 3 8B
+  const MODEL_NAME = "llama-3.3-70b-versatile"; // Groq — Llama 3.3 70B
   const cursorRef = useRef(null);
 
   useEffect(() => {
@@ -58,47 +79,116 @@ function App() {
     return [{ role: 'system', content: systemPrompt }, ...mapped];
   }, []);
 
+  // Sanitize user input — strip HTML tags before sending to API
+  const sanitize = (str) => str.replace(/<[^>]*>/g, '').trim().substring(0, 300);
+
+  const saveSession = useCallback((id, newMessages, optA, optB) => {
+    setSessions(prev => {
+      const idx = prev.findIndex(s => s.id === id);
+      const title = `${optA} vs ${optB}`.substring(0, 60);
+      const sessionData = { id, title, optionA: optA, optionB: optB, messages: newMessages, timestamp: id };
+      let nextSessions = [...prev];
+      if (idx >= 0) { nextSessions[idx] = sessionData; }
+      else { nextSessions = [sessionData, ...nextSessions]; }
+      try { localStorage.setItem('finance_wise_history', JSON.stringify(nextSessions)); } catch(e) { console.warn('Storage full', e); }
+      return nextSessions;
+    });
+  }, []);
+
+  const loadSession = useCallback((session) => {
+    setCurrentSessionId(session.id);
+    setOptionA(session.optionA);
+    setOptionB(session.optionB);
+    setMessages(session.messages);
+    setHasSearched(true);
+    setShowHistory(false);
+  }, []);
+
+  const deleteSession = useCallback((e, id) => {
+    e.stopPropagation();
+    setSessions(prev => {
+      const next = prev.filter(s => s.id !== id);
+      try { localStorage.setItem('finance_wise_history', JSON.stringify(next)); } catch(e) { console.warn('Storage error', e); }
+      return next;
+    });
+    if (currentSessionId === id) { startNew(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
+
+  const startNew = useCallback(() => {
+    setMessages([]);
+    setHasSearched(false);
+    setOptionA('');
+    setOptionB('');
+    setCurrentSessionId(null);
+  }, []);
+
   const handleAnalyze = async (e) => {
     e.preventDefault();
-    if (!optionA.trim() || !optionB.trim()) return;
+    const cleanA = sanitize(optionA);
+    const cleanB = sanitize(optionB);
+    if (!cleanA || !cleanB) return;
 
     setHasSearched(true);
     setLoading(true);
     setLoadingText(`Running Free Mentor...`);
     setMessages([]);
     
+    const sessionId = Date.now().toString();
+    setCurrentSessionId(sessionId);
+
     try {
-      const promptText = `I am trying to decide between Option A: "${optionA}" and Option B: "${optionB}". Can you compare these and guide me?`;
+      const promptText = `I am trying to decide between Option A: "${cleanA}" and Option B: "${cleanB}". Can you compare these and guide me?`;
       
       const newUIMessages = [{ role: 'user', text: promptText }, { role: 'model', text: '' }];
       setMessages(newUIMessages);
+      saveSession(sessionId, newUIMessages, cleanA, cleanB);
       
-      const apiMessages = buildApiMessages(newUIMessages);
+      let fullText = "";
+      
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newUIMessages })
+      }).catch(() => null);
 
-      const client = new OpenAI({
-        apiKey: apiKey,
-        baseURL: "https://api.groq.com/openai/v1",
-        dangerouslyAllowBrowser: true
-      });
-
-      const response = await client.chat.completions.create({
-        model: MODEL_NAME,
-        messages: apiMessages,
-      });
-
-      const fullText = response.choices[0]?.message?.content || "";
+      if (res && res.ok) {
+        const data = await res.json();
+        fullText = data.reply;
+      } else {
+        // Safe Client Fallback for pure Dev environment 
+        const apiMessages = buildApiMessages(newUIMessages);
+        const fbRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+             model: MODEL_NAME,
+             messages: apiMessages
+          })
+        });
+        if (!fbRes.ok) {
+           const errData = await fbRes.json().catch(()=>({}));
+           throw new Error(errData.error?.message || `API Error ${fbRes.status}: Please ensure your Groq API key is correct.`);
+        }
+        const data = await fbRes.json();
+        fullText = data.choices[0]?.message?.content || "";
+      }
       
       setMessages(prev => {
         const updated = [...prev];
         updated[updated.length - 1] = { role: 'model', text: fullText };
+        saveSession(sessionId, updated, cleanA, cleanB);
         return updated;
       });
       
     } catch (error) {
       console.error(error);
       let errorMsg = error.message;
-      if (errorMsg.includes('429') || errorMsg.includes('exceeded your current quota')) {
-        errorMsg = "⏳ You've briefly hit the Groq Free-Tier rate limit. Please wait a moment and try your request again!";
+      if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('rate')) {
+        errorMsg = "⏳ You've briefly hit the Groq free-tier rate limit. Please wait a moment and try again!";
       }
       setMessages(prev => [...prev, {role: 'model', text: errorMsg}]);
     }
@@ -114,37 +204,56 @@ function App() {
      
      const updatedUIMessages = [...messages, { role: 'user', text: newMsgText }, { role: 'model', text: '' }];
      setMessages(updatedUIMessages);
+     if (currentSessionId) saveSession(currentSessionId, updatedUIMessages, optionA, optionB);
      
      setLoading(true);
      setLoadingText(`Running Free Mentor...`);
      
      try {
-       const apiMessages = buildApiMessages(updatedUIMessages);
-
-       const client = new OpenAI({
-         apiKey: apiKey,
-         baseURL: "https://api.groq.com/openai/v1",
-         dangerouslyAllowBrowser: true
-       });
-
-       const response = await client.chat.completions.create({
-         model: MODEL_NAME,
-         messages: apiMessages,
-       });
-
-       const fullText = response.choices[0]?.message?.content || "";
+       let fullText = "";
+       
+       const res = await fetch('/api/chat', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ messages: updatedUIMessages })
+       }).catch(() => null);
+       
+       if (res && res.ok) {
+         const data = await res.json();
+         fullText = data.reply;
+       } else {
+         const apiMessages = buildApiMessages(updatedUIMessages);
+         const fbRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+           method: "POST",
+           headers: {
+             "Content-Type": "application/json",
+             "Authorization": `Bearer ${apiKey}`
+           },
+           body: JSON.stringify({
+              model: MODEL_NAME,
+              messages: apiMessages
+           })
+         });
+         if (!fbRes.ok) {
+            const errData = await fbRes.json().catch(()=>({}));
+            throw new Error(errData.error?.message || `API Error ${fbRes.status}: Please ensure your Groq API key is correct.`);
+         }
+         const data = await fbRes.json();
+         fullText = data.choices[0]?.message?.content || "";
+       }
 
        setMessages(prev => {
          const updated = [...prev];
          updated[updated.length - 1] = { role: 'model', text: fullText };
+         if (currentSessionId) saveSession(currentSessionId, updated, optionA, optionB);
          return updated;
        });
 
      } catch (err) {
        console.error(err);
        let errorMsg = err.message;
-       if (errorMsg.includes('429') || errorMsg.includes('exceeded your current quota')) {
-         errorMsg = "⏳ You've briefly hit the Groq Free-Tier rate limit. Please wait a moment and try your request again!";
+       if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('rate')) {
+         errorMsg = "⏳ You've briefly hit the Groq free-tier rate limit. Please wait a moment and try again!";
        }
        setMessages(prev => [...prev, {role: 'model', text: errorMsg}]);
     }
@@ -152,30 +261,16 @@ function App() {
      setLoading(false);
   };
 
-  // Basic styling for the markdown output
-  const renderMarkdown = (text) => (
-    <div className="max-w-none text-gray-200">
-      <ReactMarkdown
-        components={{
-          h1: ({node, ...props}) => <h1 className="text-2xl font-medium mb-4 text-[#ececec]" {...props} />,
-          h2: ({node, ...props}) => <h2 className="text-xl font-medium mt-6 mb-3 text-[#ececec]" {...props} />,
-          h3: ({node, ...props}) => <h3 className="text-lg font-medium mt-4 mb-2 text-[#cccccc]" {...props} />,
-          p: ({node, ...props}) => <p className="leading-relaxed mb-4 text-[#ababab]" {...props} />,
-          ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-[#ababab] marker:text-[#555]" {...props} />,
-          ol: ({node, ...props}) => <ol className="list-decimal ml-6 mb-4 text-[#ababab] marker:text-[#555]" {...props} />,
-          li: ({node, ...props}) => <li className="mb-1" {...props} />,
-          strong: ({node, ...props}) => <strong className="font-medium text-[#ececec]" {...props} />,
-          a: ({node, ...props}) => <a className="text-[#ececec] underline underline-offset-4 hover:text-white transition-colors" {...props} />,
-          blockquote: ({node, ...props}) => <blockquote className="border-l-2 border-[#555] pl-4 italic py-1 my-4 text-[#888]" {...props} />,
-        }}
-      >
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#0e0e0e] text-[#ededed] font-sans selection:bg-[#444] selection:text-white flex flex-col items-center relative overflow-hidden cursor-default md:cursor-none">
+      {/* Skip to main content - Accessibility */}
+      <a 
+        href="#main-content" 
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[999] focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded-lg focus:font-medium"
+      >
+        Skip to main content
+      </a>
       
       {/* Floating Piggy Cursor */}
       <div 
@@ -187,11 +282,15 @@ function App() {
       </div>
       
       {/* Background Matrix Rain for Start Page */}
-      {!hasSearched && <MatrixRain />}
+      {!hasSearched && (
+        <Suspense fallback={null}>
+          <MatrixRain />
+        </Suspense>
+      )}
 
       {/* Top Navbar */}
       <header className="w-full h-16 flex justify-between items-center px-6 bg-[#0e0e0e] sticky top-0 z-50 border-b border-[#222]">
-        <div className="flex items-center gap-2 font-sans font-semibold text-xl tracking-tight text-[#ececec] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => { setMessages([]); setHasSearched(false); setOptionA(''); setOptionB(''); }}>
+        <div className="flex items-center gap-2 font-sans font-semibold text-xl tracking-tight text-[#ececec] cursor-pointer hover:opacity-80 transition-opacity" onClick={startNew}>
           <div 
             className="w-6 h-6 bg-[#ececec] rounded flex items-center justify-center p-1"
             role="img"
@@ -202,15 +301,25 @@ function App() {
           <span aria-label="Finance Wise Home">Finance Wise</span>
         </div>
         <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setShowHistory(true)}
+            className="text-sm p-2 text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+            aria-label="Open comparison history"
+            title="History"
+          >
+            <History className="w-4 h-4" aria-hidden="true" /> <span className="hidden md:inline">History</span>
+          </button>
           {showSettings ? (
             <div className="flex items-center gap-2 animate-in slide-in-from-right-4 duration-300">
               <input 
-                type="password" 
-                placeholder="Groq API Key" 
+                type="password"
+                id="apiKeyInput"
+                placeholder="Groq API Key"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="perp-input rounded-md px-3 py-1.5 text-sm text-[#ececec] focus:outline-none w-48 transition-colors"
                 title="Paste Groq API Key here"
+                aria-label="Enter your Groq API key"
               />
               <button 
                 onClick={() => setShowSettings(false)}
@@ -224,6 +333,7 @@ function App() {
               onClick={() => setShowSettings(true)}
               className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
               title="Add Groq API Key"
+              aria-label="Open API key settings"
             >
               API Settings
             </button>
@@ -231,11 +341,11 @@ function App() {
         </div>
       </header>
 
-      <main className={`w-full max-w-3xl px-4 md:px-8 transition-all duration-500 ease-in-out flex flex-col ${hasSearched ? 'pt-8' : 'pt-32 md:pt-48 items-center'}`}>
+      <main id="main-content" className={`w-full max-w-3xl px-4 md:px-8 transition-all duration-500 ease-in-out flex flex-col ${hasSearched ? 'pt-8' : 'pt-32 md:pt-48 items-center'}`}>
         
         {!hasSearched && (
           <div className="text-center mb-10 flex flex-col items-center animate-in fade-in duration-500 w-full">
-            <h1 className="text-4xl md:text-5xl font-sans font-medium tracking-tight mb-4 text-[#ececec]">
+            <h1 className="text-4xl md:text-5xl font-sans font-medium tracking-tight mb-4 text-white">
               What's your financial choice?
             </h1>
             <p className="text-[#888] text-lg max-w-lg font-light">
@@ -244,9 +354,10 @@ function App() {
           </div>
         )}
 
-        {/* Initial Input Form */}
+        {/* Initial Input Form and Below Section */}
         {!hasSearched && (
-          <div className={`w-full transition-all duration-500 max-w-2xl z-10`}>
+          <>
+          <div className={`w-full transition-all duration-500 max-w-2xl z-10 bg-[#000000]/40 backdrop-blur-md p-3 md:p-4 rounded-[2rem] border border-[#222] shadow-2xl`}>
             <form onSubmit={handleAnalyze} className="relative group w-full">
               <div className="relative perp-input rounded-[1.5rem] p-2 flex flex-col md:flex-row items-center gap-2 w-full transition-colors">
                 <div className="flex-1 w-full px-4 py-3 flex items-center gap-3 border-b md:border-b-0 md:border-r border-[#333] transition-colors rounded-t-[1rem] md:rounded-[1rem]">
@@ -282,37 +393,68 @@ function App() {
                 <button 
                   type="submit"
                   disabled={loading || !optionA.trim() || !optionB.trim()}
-                  className="w-full md:w-auto px-5 py-3 md:py-2 md:px-4 m-1 rounded-xl bg-[#ececec] hover:bg-[#ffffff] text-black flex items-center justify-center transition-all cursor-pointer font-medium tracking-wide disabled:opacity-50 disabled:cursor-not-allowed hidden md:flex"
+                  className="w-full md:w-auto px-6 py-3 md:py-2 md:px-6 m-1 rounded-xl bg-[#ececec] hover:bg-[#ffffff] text-black flex items-center justify-center transition-all cursor-pointer font-medium tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Compare financial options"
                 >
-                  <ArrowRight className="w-5 h-5 text-black" aria-hidden="true" />
-                </button>
-                <button 
-                  type="submit"
-                  disabled={loading || !optionA.trim() || !optionB.trim()}
-                  className="w-full p-3 m-1 rounded-xl bg-[#ececec] hover:bg-[#ffffff] text-black items-center justify-center transition-all cursor-pointer font-medium tracking-wide disabled:opacity-50 disabled:cursor-not-allowed flex md:hidden"
-                  aria-label="Compare financial options mobile button"
-                >
-                  Compare Options
+                  Compare <ArrowRight className="w-4 h-4 ml-2 text-black" aria-hidden="true" />
                 </button>
               </div>
             </form>
           </div>
+
+          {/* Below Input Product Experience Section */}
+          <div className="w-full max-w-2xl mt-12 animate-in fade-in duration-700 delay-300 fill-mode-both z-10">
+            {sessions.length > 0 ? (
+               <>
+                 <h3 className="text-[#888] text-sm font-medium uppercase tracking-widest mb-4 flex items-center justify-center gap-2">
+                    <History className="w-4 h-4" /> RECENT COMPARISONS
+                 </h3>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {sessions.slice(0, 4).map(s => (
+                    <div 
+                       key={s.id}
+                       role="button"
+                       tabIndex={0}
+                       onClick={() => loadSession(s)}
+                       onKeyDown={(e) => e.key === 'Enter' && loadSession(s)}
+                       aria-label={`Resume comparison: ${s.title}`}
+                       className="bg-[#111]/60 backdrop-blur-sm border border-[#222] hover:border-[#444] rounded-2xl p-4 cursor-pointer transition-all hover:-translate-y-1 group"
+                     >
+                       <h4 className="text-[#ececec] font-medium text-sm mb-2 line-clamp-1">{s.title}</h4>
+                       <p className="text-[#666] text-xs line-clamp-2">{s.messages[s.messages.length - 1]?.text?.replace(/<[^>]*>?/gm, '').substring(0, 80) || "View analysis details..."}</p>
+                     </div>
+                   ))}
+                 </div>
+               </>
+            ) : (
+              <div className="bg-[#111]/40 backdrop-blur-sm border border-[#222] border-dashed rounded-2xl p-8 text-center flex flex-col items-center">
+                 <Sparkles className="w-6 h-6 text-[#444] mb-3" />
+                 <h3 className="text-[#ececec] text-sm font-medium mb-1">AI analysis appears here</h3>
+                 <p className="text-[#555] text-xs">Enter your options above to start your first financial comparison.</p>
+              </div>
+            )}
+          </div>
+          </>
         )}
 
         {/* Results / Chat Thread */}
         {hasSearched && (
-          <div className="pb-32 space-y-8 animate-in fade-in duration-500 w-full flex flex-col">
+          <div 
+             className="pb-32 space-y-8 animate-in fade-in duration-500 w-full flex flex-col"
+             aria-live="polite"
+             aria-atomic="false"
+             aria-label="AI Mentor responses"
+          >
             {messages.map((msg, idx) => (
               <div key={idx} className={`w-full flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} ${!msg.text ? 'hidden' : 'flex'}`}>
                 {msg.role === 'model' && (
                   <div className="w-8 h-8 rounded shrink-0 mr-4 mt-1 flex items-center justify-center bg-[#ececec]">
-                     <Sparkles className="w-5 h-5 text-black" />
+                     <Sparkles className="w-5 h-5 text-black" aria-hidden="true" />
                   </div>
                 )}
                 
                 <div className={`${msg.role === 'user' ? 'bg-[#2a2a2a] text-[#ededed] px-5 py-3 rounded-2xl max-w-[80%]' : 'bg-transparent text-[#ededed] w-full text-left'}`}>
-                   {msg.role === 'model' ? renderMarkdown(msg.text) : <span className="text-[15px]">{msg.text}</span>}
+                   {msg.role === 'model' ? <MarkdownOutput text={msg.text} /> : <span className="text-[15px]">{msg.text}</span>}
                 </div>
               </div>
             ))}
@@ -364,6 +506,16 @@ function App() {
           </div>
         </div>
       )}
+
+      <HistorySidebar 
+        show={showHistory} 
+        onClose={() => setShowHistory(false)} 
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onLoadSession={loadSession}
+        onDeleteSession={deleteSession}
+        onStartNew={startNew}
+      />
 
     </div>
   );
