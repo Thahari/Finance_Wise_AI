@@ -1,8 +1,8 @@
-# Finance Wise AI 🧠💰
+# Finance Wise 🧠💰
 
 > **The problem:** Most people instinctively know what *sounds* better financially — but they can't explain *why* it's safer, and they don't know what could go wrong.
 
-Finance Wise AI is a beginner-safe financial decision tool that compares two real options using structured AI reasoning — not generic advice, not "it depends." You get a clear, stress-tested recommendation in plain English.
+Finance Wise is a beginner-safe financial decision tool that compares two real options using structured AI reasoning — not generic advice, not "it depends." You get a clear, stress-tested recommendation in plain English.
 
 ---
 
@@ -14,7 +14,7 @@ Beginners face a critical gap: financial literacy content is either too academic
 - *"Should I buy a car or keep renting?"*
 - *"Should I build an emergency fund or start a SIP?"*
 
-**Finance Wise AI fills that gap** — it acts as a calm, knowledgeable mentor who explains both options in plain English, stress-tests them for real-world risk, and gives a decisive recommendation.
+**Finance Wise fills that gap** — it acts as a calm, knowledgeable mentor who explains both options in plain English, stress-tests them for real-world risk, and gives a decisive recommendation.
 
 ---
 
@@ -79,8 +79,8 @@ The app runs a structured AI reasoning engine (powered by Grok) with a carefully
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-username/finance-wise-ai.git
-cd finance-wise-ai
+git clone https://github.com/Thahari/Finance_Wise_AI.git
+cd Finance_Wise_AI
 
 # 2. Install dependencies
 npm install
@@ -114,4 +114,4 @@ npm run test
 
 ---
 
-*Built with ❤️ to make financial reasoning accessible to everyone.*
+*Built with ❤️ to make financial reasoning accessible to everyone — Finance Wise.*
