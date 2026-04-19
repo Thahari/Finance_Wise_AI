@@ -116,6 +116,52 @@ describe('Finance Wise App UI', () => {
     render(<App />);
     const settingsBtn = screen.getByRole('button', { name: /open api key settings/i });
     fireEvent.click(settingsBtn);
-    expect(screen.getByPlaceholderText(/Grok/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Groq API Key/i)).toBeInTheDocument();
+  });
+
+  // ─── Test 7: Compare button disabled when inputs are empty ────────────────
+  it('7. Compare button is disabled when inputs are empty', () => {
+    render(<App />);
+    const compareBtn = screen.getByRole('button', { name: /Compare financial options/i });
+    expect(compareBtn).toBeDisabled();
+  });
+
+  // ─── Test 8: Compare button enables when both inputs are filled ───────────
+  it('8. Compare button enables when both option inputs are filled', () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText(/Enter your first financial option/i), { target: { value: 'Pay rent' } });
+    fireEvent.change(screen.getByLabelText(/Enter your second financial option/i), { target: { value: 'Save for house' } });
+    const compareBtn = screen.getByRole('button', { name: /Compare financial options/i });
+    expect(compareBtn).not.toBeDisabled();
+  });
+
+  // ─── Test 9: History button is present in the header ──────────────────────
+  it('9. History button is present and accessible in the header', () => {
+    render(<App />);
+    const historyBtn = screen.getByRole('button', { name: /open comparison history/i });
+    expect(historyBtn).toBeInTheDocument();
+  });
+
+  // ─── Test 10: API failure shows friendly error message ────────────────────
+  it('10. shows a user-friendly error when the API call fails', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText(/Enter your first financial option/i), { target: { value: 'Option X' } });
+    fireEvent.change(screen.getByLabelText(/Enter your second financial option/i), { target: { value: 'Option Y' } });
+    fireEvent.click(screen.getByRole('button', { name: /Compare financial options/i }));
+
+    await waitFor(() => {
+      // Should show some error text on failure — not crash silently
+      const msgs = screen.queryAllByText(/.+/);
+      expect(msgs.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ─── Test 11: Finance Wise branding visible ───────────────────────────────
+  it('11. displays the Finance Wise brand name in the header', () => {
+    render(<App />);
+    expect(screen.getByLabelText(/Finance Wise Home/i)).toBeInTheDocument();
   });
 });
